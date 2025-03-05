@@ -1,0 +1,1 @@
+Extends the [standard library JPEG](https://pkg.go.dev/image/jpeg) implementation.
