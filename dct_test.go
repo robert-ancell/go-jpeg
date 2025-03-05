@@ -224,7 +224,7 @@ func (b *block) String() string {
 	return s.String()
 }
 
-// testBlocks are the first 10 pre-IDCT blocks from ../testdata/video-001.jpeg.
+// testBlocks are the first 10 pre-IDCT blocks from testdata/video-001.jpeg.
 var testBlocks = [10]block{
 	{
 		0x7f, 0xf6, 0x01, 0x07, 0xff, 0x00, 0x00, 0x00,
