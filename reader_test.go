@@ -546,6 +546,40 @@ func TestBadRestartMarker(t *testing.T) {
 	}
 }
 
+func TestArithmetic(t *testing.T) {
+	b, err := os.ReadFile("testdata/video-001.arithmetic.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Decode(bytes.NewReader(b))
+	if err == nil {
+		t.Fatalf("Decode: got nil error, want non-nil")
+	}
+	if _, ok := err.(UnsupportedError); !ok {
+		t.Fatalf("Decode: got %v (of type %T), want non-nil error (of type jpeg.UnsupportedError)", err, err)
+	}
+	if err.Error() != "unsupported JPEG feature: arithmetic encoding" {
+		t.Fatalf("Decode: expected arithmetic encoding error, got %q", err.Error())
+	}
+}
+
+func TestLossless(t *testing.T) {
+	b, err := os.ReadFile("testdata/video-001.lossless.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Decode(bytes.NewReader(b))
+	if err == nil {
+		t.Fatalf("Decode: got nil error, want non-nil")
+	}
+	if _, ok := err.(UnsupportedError); !ok {
+		t.Fatalf("Decode: got %v (of type %T), want non-nil error (of type jpeg.UnsupportedError)", err, err)
+	}
+	if err.Error() != "unsupported JPEG feature: lossless encoding" {
+		t.Fatalf("Decode: expected lossless encoding error, got %q", err.Error())
+	}
+}
+
 func benchmarkDecode(b *testing.B, filename string) {
 	data, err := os.ReadFile(filename)
 	if err != nil {

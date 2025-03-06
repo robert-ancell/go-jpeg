@@ -44,18 +44,28 @@ const (
 )
 
 const (
-	sof0Marker = 0xc0 // Start Of Frame (Baseline Sequential).
-	sof1Marker = 0xc1 // Start Of Frame (Extended Sequential).
-	sof2Marker = 0xc2 // Start Of Frame (Progressive).
-	dhtMarker  = 0xc4 // Define Huffman Table.
-	rst0Marker = 0xd0 // ReSTart (0).
-	rst7Marker = 0xd7 // ReSTart (7).
-	soiMarker  = 0xd8 // Start Of Image.
-	eoiMarker  = 0xd9 // End Of Image.
-	sosMarker  = 0xda // Start Of Scan.
-	dqtMarker  = 0xdb // Define Quantization Table.
-	driMarker  = 0xdd // Define Restart Interval.
-	comMarker  = 0xfe // COMment.
+	sof0Marker  = 0xc0 // Start Of Frame (Baseline Sequential).
+	sof1Marker  = 0xc1 // Start Of Frame (Extended Sequential).
+	sof2Marker  = 0xc2 // Start Of Frame (Progressive).
+	sof3Marker  = 0xc3 // Start Of Frame (Lossless).
+	dhtMarker   = 0xc4 // Define Huffman Table.
+	sof5Marker  = 0xc5 // Start Of Frame (Differential Sequential).
+	sof6Marker  = 0xc6 // Start Of Frame (Differential Progressive).
+	sof7Marker  = 0xc7 // Start Of Frame (Differential Lossless).
+	sof9Marker  = 0xc9 // Start Of Frame (Extended Arithmetic).
+	sof10Marker = 0xca // Start Of Frame (Progressive Arithmetic).
+	sof11Marker = 0xcb // Start Of Frame (Lossless Arithmetic).
+	sof13Marker = 0xcd // Start Of Frame (Differential Sequential Arithmetic).
+	sof14Marker = 0xce // Start Of Frame (Differential Progressive Arithmetic).
+	sof15Marker = 0xcf // Start Of Frame (Differential Lossless Arithmetic).
+	rst0Marker  = 0xd0 // ReSTart (0).
+	rst7Marker  = 0xd7 // ReSTart (7).
+	soiMarker   = 0xd8 // Start Of Image.
+	eoiMarker   = 0xd9 // End Of Image.
+	sosMarker   = 0xda // Start Of Scan.
+	dqtMarker   = 0xdb // Define Quantization Table.
+	driMarker   = 0xdd // Define Restart Interval.
+	comMarker   = 0xfe // COMment.
 	// "APPlication specific" markers aren't part of the JPEG spec per se,
 	// but in practice, their use is described at
 	// https://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html
@@ -604,6 +614,12 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 			if configOnly && d.jfif {
 				return nil, err
 			}
+		case sof9Marker, sof10Marker:
+			err = UnsupportedError("arithmetic encoding")
+		case sof3Marker, sof11Marker:
+			err = UnsupportedError("lossless encoding")
+		case sof5Marker, sof6Marker, sof7Marker, sof13Marker, sof14Marker, sof15Marker:
+			err = UnsupportedError("differential encoding")
 		case dhtMarker:
 			if configOnly {
 				err = d.ignore(n)
