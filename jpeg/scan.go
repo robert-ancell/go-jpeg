@@ -48,20 +48,57 @@ func (d *decoder) makeImg(mxx, myy int) {
 }
 
 // Decode the DC coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
-func (d *decoder) decodeDC(td uint8) (uint8, error) {
+func (d *decoder) decodeDC(td uint8) (int32, error) {
 	if d.arithmetic {
 		return d.decodeArithmeticDC(&d.arith[dcTable][td])
 	} else {
-		return d.decodeHuffman(&d.huff[dcTable][td])
+		value, err := d.decodeHuffman(&d.huff[dcTable][td])
+		if err != nil {
+			return 0, err
+		}
+		if value > 16 {
+			return 0, UnsupportedError("excessive DC component")
+		}
+		return d.receiveExtend(value)
 	}
 }
 
-// Decode the AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
-func (d *decoder) decodeAC(ta uint8) (uint8, error) {
+// Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
+func (d *decoder) decodeAC(ta uint8, zig int32) (uint16, int32, bool, error) {
 	if d.arithmetic {
-		return d.decodeArithmeticAC(&d.arith[acTable][ta])
+		ac, err := d.decodeArithmeticAC(&d.arith[acTable][ta])
+		if err != nil {
+			return 0, 0, false, err
+		}
+		return 0, ac, false, nil
 	} else {
-		return d.decodeHuffman(&d.huff[acTable][ta])
+		value, err := d.decodeHuffman(&d.huff[acTable][ta])
+		if err != nil {
+			return 0, 0, false, err
+		}
+		val0 := value >> 4
+		val1 := value & 0x0f
+		if val1 != 0 {
+			r := uint16(val0)
+			ac, err := d.receiveExtend(val1)
+			if err != nil {
+				return 0, 0, false, err
+			}
+			return r, ac, false, nil
+		} else {
+			if val0 != 0x0f {
+				eobRun := uint16(1 << val0)
+				if val0 != 0 {
+					bits, err := d.decodeBits(int32(val0))
+					if err != nil {
+						return 0, 0, false, err
+					}
+					eobRun |= uint16(bits)
+				}
+				return eobRun, 0, true, nil
+			}
+			return 0x0f, 0, false, nil
+		}
 	}
 }
 
@@ -247,14 +284,7 @@ func (d *decoder) processSOS(n int) error {
 						zig := zigStart
 						if zig == 0 {
 							zig++
-							value, err := d.decodeDC(scan[i].td)
-							if err != nil {
-								return err
-							}
-							if value > 16 {
-								return UnsupportedError("excessive DC component")
-							}
-							dcDelta, err := d.receiveExtend(value)
+							dcDelta, err := d.decodeDC(scan[i].td)
 							if err != nil {
 								return err
 							}
@@ -267,37 +297,16 @@ func (d *decoder) processSOS(n int) error {
 						} else {
 							// Decode the AC coefficients, as specified in section F.2.2.2.
 							for ; zig <= zigEnd; zig++ {
-								value, err := d.decodeAC(scan[i].ta)
+								r, ac, isEob, err := d.decodeAC(scan[i].ta, zig)
 								if err != nil {
 									return err
 								}
-								val0 := value >> 4
-								val1 := value & 0x0f
-								if val1 != 0 {
-									zig += int32(val0)
-									if zig > zigEnd {
-										break
-									}
-									ac, err := d.receiveExtend(val1)
-									if err != nil {
-										return err
-									}
-									b[unzig[zig]] = ac << al
-								} else {
-									if val0 != 0x0f {
-										d.eobRun = uint16(1 << val0)
-										if val0 != 0 {
-											bits, err := d.decodeBits(int32(val0))
-											if err != nil {
-												return err
-											}
-											d.eobRun |= uint16(bits)
-										}
-										d.eobRun--
-										break
-									}
-									zig += 0x0f
+								if isEob {
+									d.eobRun = r - 1
+									break
 								}
+								zig += int32(r)
+								b[unzig[zig]] = ac << al
 							}
 						}
 					}
