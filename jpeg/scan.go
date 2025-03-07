@@ -49,7 +49,7 @@ func (d *decoder) makeImg(mxx, myy int) {
 
 // Decode the DC coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
 func (d *decoder) decodeDC(td uint8) (uint8, error) {
-	if (d.arithmetic) {
+	if d.arithmetic {
 		return d.decodeArithmeticDC(&d.arith[dcTable][td])
 	} else {
 		return d.decodeHuffman(&d.huff[dcTable][td])
@@ -58,7 +58,7 @@ func (d *decoder) decodeDC(td uint8) (uint8, error) {
 
 // Decode the AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
 func (d *decoder) decodeAC(ta uint8) (uint8, error) {
-	if (d.arithmetic) {
+	if d.arithmetic {
 		return d.decodeArithmeticAC(&d.arith[acTable][ta])
 	} else {
 		return d.decodeHuffman(&d.huff[acTable][ta])
