@@ -258,11 +258,27 @@ func (d *decoder) decodeArithmeticDC(a *arithmetic) (int32, error) {
 
 // decodeArithmeticAC returns the next Arithmetic-coded AC value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticAC(a *arithmetic) (int32, error) {
-	var fixedState arithmeticState
-	bit, err := d.decodeArithmeticBit(a, &fixedState)
+func (d *decoder) decodeArithmeticAC(a *arithmetic, k int32) (int32, bool, error) {
+	bit, err := d.decodeArithmeticBit(a, &a.acEndOfBlock[k-1])
 	if err != nil {
-		return 0, err
+		return 0, false, err
+	}
+	if bit {
+		return 0, true, nil
+	}
+
+	bit, err = d.decodeArithmeticBit(a, &a.acNonZero[k-1])
+	if err != nil {
+		return 0, false, err
+	}
+	if !bit {
+		return 0, false, nil
+	}
+
+	var fixedState arithmeticState
+	bit, err = d.decodeArithmeticBit(a, &fixedState)
+	if err != nil {
+		return 0, false, err
 	}
 	var sign int32 = 0
 	if bit {
@@ -271,25 +287,32 @@ func (d *decoder) decodeArithmeticAC(a *arithmetic) (int32, error) {
 		sign = 1
 	}
 
-	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[0])
+	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[k-1])
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if !bit {
-		return sign, nil
+		return sign, false, nil
+	}
+
+	xStates := &a.acLowXStates
+	mStates := &a.acLowMStates
+	if k > int32(a.conditioning) {
+		xStates = &a.acHighXStates
+		mStates = &a.acHighMStates
 	}
 
 	var width = 1
-	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[0])
+	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[k-1])
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if bit {
 		width += 1
 		for {
-			bit, err = d.decodeArithmeticBit(a, &a.acLowXStates[width-2])
+			bit, err = d.decodeArithmeticBit(a, &xStates[width-2])
 			if err != nil {
-				return 0, err
+				return 0, false, err
 			}
 			if !bit {
 				break
@@ -300,9 +323,9 @@ func (d *decoder) decodeArithmeticAC(a *arithmetic) (int32, error) {
 
 	var magnitude int32 = 1
 	for _ = range width - 1 {
-		bit, err = d.decodeArithmeticBit(a, &a.acLowMStates[width+2])
+		bit, err = d.decodeArithmeticBit(a, &mStates[width-2])
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		magnitude <<= 1
 		if bit {
@@ -311,7 +334,7 @@ func (d *decoder) decodeArithmeticAC(a *arithmetic) (int32, error) {
 	}
 	magnitude += 1
 
-	return sign * magnitude, nil
+	return sign * magnitude, false, nil
 }
 
 func (d *decoder) decodeArithmeticBit(a *arithmetic, state *arithmeticState) (bool, error) {

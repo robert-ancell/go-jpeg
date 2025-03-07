@@ -64,11 +64,14 @@ func (d *decoder) decodeDC(td uint8) (int32, error) {
 }
 
 // Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
-func (d *decoder) decodeAC(ta uint8, zig int32) (uint16, int32, bool, error) {
+func (d *decoder) decodeAC(ta uint8, k int32) (uint16, int32, bool, error) {
 	if d.arithmetic {
-		ac, err := d.decodeArithmeticAC(&d.arith[acTable][ta])
+		ac, eob, err := d.decodeArithmeticAC(&d.arith[acTable][ta], k)
 		if err != nil {
 			return 0, 0, false, err
+		}
+		if eob {
+			return 1, 0, true, nil
 		}
 		return 0, ac, false, nil
 	} else {
