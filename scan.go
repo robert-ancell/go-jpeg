@@ -47,6 +47,24 @@ func (d *decoder) makeImg(mxx, myy int) {
 	}
 }
 
+// Decode the DC coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
+func (d *decoder) decodeDC(td uint8) (uint8, error) {
+	if (d.arithmetic) {
+		return d.decodeArithmeticDC(&d.arith[dcTable][td])
+	} else {
+		return d.decodeHuffman(&d.huff[dcTable][td])
+	}
+}
+
+// Decode the AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
+func (d *decoder) decodeAC(ta uint8) (uint8, error) {
+	if (d.arithmetic) {
+		return d.decodeArithmeticAC(&d.arith[acTable][ta])
+	} else {
+		return d.decodeHuffman(&d.huff[acTable][ta])
+	}
+}
+
 // Specified in section B.2.3.
 func (d *decoder) processSOS(n int) error {
 	if d.nComp == 0 {
@@ -229,8 +247,7 @@ func (d *decoder) processSOS(n int) error {
 						zig := zigStart
 						if zig == 0 {
 							zig++
-							// Decode the DC coefficient, as specified in section F.2.2.1.
-							value, err := d.decodeHuffman(&d.huff[dcTable][scan[i].td])
+							value, err := d.decodeDC(scan[i].td)
 							if err != nil {
 								return err
 							}
@@ -249,9 +266,8 @@ func (d *decoder) processSOS(n int) error {
 							d.eobRun--
 						} else {
 							// Decode the AC coefficients, as specified in section F.2.2.2.
-							huff := &d.huff[acTable][scan[i].ta]
 							for ; zig <= zigEnd; zig++ {
-								value, err := d.decodeHuffman(huff)
+								value, err := d.decodeAC(scan[i].ta)
 								if err != nil {
 									return err
 								}
@@ -356,7 +372,7 @@ func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) er
 	loop:
 		for ; zig <= zigEnd; zig++ {
 			z := int32(0)
-			value, err := d.decodeHuffman(h)
+			value, err := d.decodeHuffman(h) // FIXME: Arithmetic
 			if err != nil {
 				return err
 			}

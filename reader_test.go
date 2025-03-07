@@ -551,15 +551,13 @@ func TestArithmetic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Decode(bytes.NewReader(b))
-	if err == nil {
-		t.Fatalf("Decode: got nil error, want non-nil")
+	im, err := Decode(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := err.(UnsupportedError); !ok {
-		t.Fatalf("Decode: got %v (of type %T), want non-nil error (of type jpeg.UnsupportedError)", err, err)
-	}
-	if err.Error() != "unsupported JPEG feature: arithmetic encoding" {
-		t.Fatalf("Decode: expected arithmetic encoding error, got %q", err.Error())
+
+	if im.Bounds() != image.Rect(0, 0, 150, 103) {
+		t.Errorf("bad bounds: %v", im.Bounds())
 	}
 }
 

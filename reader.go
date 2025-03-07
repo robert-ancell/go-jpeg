@@ -38,6 +38,7 @@ const (
 	acTable = 1
 	maxTc   = 1
 	maxTh   = 3
+	maxTb   = 3
 	maxTq   = 3
 
 	maxComponents = 4
@@ -55,6 +56,7 @@ const (
 	sof9Marker  = 0xc9 // Start Of Frame (Extended Arithmetic).
 	sof10Marker = 0xca // Start Of Frame (Progressive Arithmetic).
 	sof11Marker = 0xcb // Start Of Frame (Lossless Arithmetic).
+	dacMarker   = 0xcc // Define Arithmetic Conditioning
 	sof13Marker = 0xcd // Start Of Frame (Differential Sequential Arithmetic).
 	sof14Marker = 0xce // Start Of Frame (Differential Progressive Arithmetic).
 	sof15Marker = 0xcf // Start Of Frame (Differential Lossless Arithmetic).
@@ -143,6 +145,7 @@ type decoder struct {
 	// extended, as per section 4.11.
 	baseline    bool
 	progressive bool
+	arithmetic  bool
 
 	jfif                bool
 	adobeTransformValid bool
@@ -152,6 +155,7 @@ type decoder struct {
 	comp       [maxComponents]component
 	progCoeffs [maxComponents][]block // Saved state between progressive-mode scans.
 	huff       [maxTc + 1][maxTh + 1]huffman
+	arith      [maxTc + 1][maxTb + 1]arithmetic
 	quant      [maxTq + 1]block // Quantization tables, in zig-zag order.
 	tmp        [2 * blockSize]byte
 }
@@ -607,15 +611,14 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 		}
 
 		switch marker {
-		case sof0Marker, sof1Marker, sof2Marker:
+		case sof0Marker, sof1Marker, sof2Marker, sof9Marker, sof10Marker:
 			d.baseline = marker == sof0Marker
-			d.progressive = marker == sof2Marker
+			d.progressive = marker == sof2Marker || marker == sof10Marker
+			d.arithmetic = marker == sof9Marker || marker == sof10Marker
 			err = d.processSOF(n)
 			if configOnly && d.jfif {
 				return nil, err
 			}
-		case sof9Marker, sof10Marker:
-			err = UnsupportedError("arithmetic encoding")
 		case sof3Marker, sof11Marker:
 			err = UnsupportedError("lossless encoding")
 		case sof5Marker, sof6Marker, sof7Marker, sof13Marker, sof14Marker, sof15Marker:
@@ -625,6 +628,12 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 				err = d.ignore(n)
 			} else {
 				err = d.processDHT(n)
+			}
+		case dacMarker:
+			if configOnly {
+				err = d.ignore(n)
+			} else {
+				err = d.processDAC(n)
 			}
 		case dqtMarker:
 			if configOnly {
