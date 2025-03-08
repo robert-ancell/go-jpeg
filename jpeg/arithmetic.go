@@ -266,7 +266,7 @@ func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDe
 			break
 		}
 		width += 1
-		if width > 15 {
+		if width >= 15 {
 			return 0, FormatError("invalid arithmetic DC width")
 		}
 	}
@@ -359,7 +359,7 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 				break
 			}
 			width += 1
-			if width > 15 {
+			if width >= 15 {
 				return 0, 0, false, FormatError("invalid arithmetic AC width")
 			}
 		}
