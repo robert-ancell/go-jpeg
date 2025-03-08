@@ -200,12 +200,7 @@ func (d *decoder) initDecodeArithmetic() error {
 
 // decodeArithmeticDC returns the next Arithmetic-coded DC delta value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDelta int32) (int32, error) {
-	var upper = int32(1 << (conditioning >> 4))
-	var lower = int32(conditioning & 0xf)
-	if lower > 0 {
-		lower = 1 << (lower - 1)
-	}
+func (d *decoder) decodeArithmeticDC(a *arithmetic, lower int32, upper int32, prevDcDelta int32) (int32, error) {
 	var c = 0
 	if prevDcDelta >= 0 {
 		if prevDcDelta <= lower {
@@ -287,7 +282,7 @@ func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDe
 
 // decodeArithmeticAC returns the next Arithmetic-coded AC value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32) (uint16, int32, bool, error) {
+func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint, kx uint) (uint16, int32, bool, error) {
 	bit, err := d.decodeArithmeticBit(a, &a.acEndOfBlock[k-1])
 	if err != nil {
 		return 0, 0, false, err
@@ -328,7 +323,6 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 		return r, sign, false, nil
 	}
 
-	var kx = int32(conditioning)
 	var widthStates *[14]arithmeticState
 	var magnitudeStates *[14]arithmeticState
 	if k <= kx {
