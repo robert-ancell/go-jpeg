@@ -181,6 +181,7 @@ func (d *decoder) initDecodeArithmetic() error {
 	d.a = 0
 	d.c = 0
 	d.d = 0
+	d.ct = 0
 	err := d.byteIn()
 	if err != nil {
 		return err
