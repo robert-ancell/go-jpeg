@@ -318,7 +318,7 @@ func (d *decoder) processSOS(n int) error {
 									d.eobRun = eobRun - 1
 									break
 								}
-								zig += uint8(r)
+								zig += r
 								b[unzig[zig]] = ac << al
 							}
 						}
