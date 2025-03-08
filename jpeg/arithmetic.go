@@ -6,25 +6,27 @@ package jpeg
 
 // arithmetic is a Arithmetic decoder, specified in section D.
 type arithmetic struct {
-	dcNonZero [5]arithmeticState
-	dcSign    [5]arithmeticState
-	dcSp      [5]arithmeticState
-	dcSn      [5]arithmeticState
-	dcXStates [15]arithmeticState
-	dcMStates [14]arithmeticState
+	// States for DC coefficients.
+	dcNonZero      [5]arithmeticState
+	dcSign         [5]arithmeticState
+	dcPositiveUnit [5]arithmeticState
+	dcNegativeUnit [5]arithmeticState
+	dcWidth        [15]arithmeticState
+	dcMagnitude    [14]arithmeticState
 
-	acEndOfBlock  [63]arithmeticState
-	acNonZero     [63]arithmeticState
-	acSnSpX1      [63]arithmeticState
-	acLowXStates  [14]arithmeticState
-	acHighXStates [14]arithmeticState
-	acLowMStates  [14]arithmeticState
-	acHighMStates [14]arithmeticState
+	// States for AC coefficients.
+	acEndOfBlock    [63]arithmeticState
+	acNonZero       [63]arithmeticState
+	acUnitOrShort   [63]arithmeticState
+	acLowWidth      [14]arithmeticState
+	acHighWidth     [14]arithmeticState
+	acLowMagnitude  [14]arithmeticState
+	acHighMagnitude [14]arithmeticState
 }
 
 type arithmeticState struct {
 	index uint8
-	mps   bool
+	mps   uint8
 }
 
 // Qe values and probability estimation state machine from table D.3.
@@ -227,7 +229,7 @@ func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDe
 	if err != nil {
 		return 0, err
 	}
-	if !bit {
+	if bit == 0 {
 		return 0, nil
 	}
 
@@ -237,42 +239,47 @@ func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDe
 	}
 	var sign int32 = 0
 	var magState *arithmeticState
-	if bit {
+	if bit == 1 {
 		sign = -1
-		magState = &a.dcSn[c]
+		magState = &a.dcNegativeUnit[c]
 	} else {
 		sign = 1
-		magState = &a.dcSp[c]
+		magState = &a.dcPositiveUnit[c]
 	}
 
 	bit, err = d.decodeArithmeticBit(a, magState)
 	if err != nil {
 		return 0, err
 	}
-	if !bit {
+	if bit == 0 {
 		return sign, nil
 	}
 
-	var width = 1
+	// Determine number of magnitude bits.
+	var width = 0
 	for {
-		bit, err = d.decodeArithmeticBit(a, &a.dcXStates[width])
+		bit, err = d.decodeArithmeticBit(a, &a.dcWidth[width])
 		if err != nil {
 			return 0, err
 		}
-		if !bit {
+		if bit == 0 {
 			break
 		}
 		width += 1
+		if width > 15 {
+			return 0, FormatError("invalid arithmetic DC width")
+		}
 	}
 
+	// Read magnitude bits.
 	var magnitude int32 = 1
-	for _ = range width - 1 {
-		bit, err = d.decodeArithmeticBit(a, &a.dcMStates[width-2])
+	for _ = range width {
+		bit, err = d.decodeArithmeticBit(a, &a.dcMagnitude[width-1])
 		if err != nil {
 			return 0, err
 		}
 		magnitude <<= 1
-		if bit {
+		if bit == 1 {
 			magnitude |= 1
 		}
 	}
@@ -288,7 +295,7 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 	if err != nil {
 		return 0, 0, false, err
 	}
-	if bit {
+	if bit == 1 {
 		return 0, 0, true, nil
 	}
 
@@ -298,7 +305,7 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 		if err != nil {
 			return 0, 0, false, err
 		}
-		if bit {
+		if bit == 1 {
 			break
 		}
 		r++
@@ -310,76 +317,78 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 		return 0, 0, false, err
 	}
 	var sign int32 = 0
-	if bit {
+	if bit == 1 {
 		sign = -1
 	} else {
 		sign = 1
 	}
 
-	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[k-1])
+	bit, err = d.decodeArithmeticBit(a, &a.acUnitOrShort[k-1])
 	if err != nil {
 		return 0, 0, false, err
 	}
-	if !bit {
+	if bit == 0 {
 		return r, sign, false, nil
 	}
 
 	var kx = int32(conditioning)
-	var xStates *[14]arithmeticState
-	var mStates *[14]arithmeticState
+	var widthStates *[14]arithmeticState
+	var magnitudeStates *[14]arithmeticState
 	if k <= kx {
-		xStates = &a.acLowXStates
-		mStates = &a.acLowMStates
+		widthStates = &a.acLowWidth
+		magnitudeStates = &a.acLowMagnitude
 	} else {
-		xStates = &a.acHighXStates
-		mStates = &a.acHighMStates
+		widthStates = &a.acHighWidth
+		magnitudeStates = &a.acHighMagnitude
 	}
 
-	var width = 1
-	bit, err = d.decodeArithmeticBit(a, &a.acSnSpX1[k-1])
+	// Determine number of magnitude bits.
+	var width = 0
+	bit, err = d.decodeArithmeticBit(a, &a.acUnitOrShort[k-1])
 	if err != nil {
 		return 0, 0, false, err
 	}
-	if bit {
+	if bit == 1 {
 		width += 1
 		for {
-			bit, err = d.decodeArithmeticBit(a, &xStates[width-2])
+			bit, err = d.decodeArithmeticBit(a, &widthStates[width-1])
 			if err != nil {
 				return 0, 0, false, err
 			}
-			if !bit {
+			if bit == 0 {
 				break
 			}
 			width += 1
+			if width > 15 {
+				return 0, 0, false, FormatError("invalid arithmetic AC width")
+			}
 		}
 	}
 
+	// Read magnitude bits.
 	var magnitude int32 = 1
-	for _ = range width - 1 {
-		bit, err = d.decodeArithmeticBit(a, &mStates[width-2])
+	for _ = range width {
+		bit, err = d.decodeArithmeticBit(a, &magnitudeStates[width-1])
 		if err != nil {
 			return 0, 0, false, err
 		}
-		magnitude <<= 1
-		if bit {
-			magnitude |= 1
-		}
+		magnitude = magnitude<<1 | int32(bit)
 	}
 	magnitude += 1
 
 	return r, sign * magnitude, false, nil
 }
 
-func (d *decoder) decodeArithmeticBit(a *arithmetic, state *arithmeticState) (bool, error) {
+func (d *decoder) decodeArithmeticBit(a *arithmetic, state *arithmeticState) (uint8, error) {
 	s := &arithmeticStateMachine[state.index]
 	d.arith.a -= s.qe
-	var bit bool = false
+	var bit = uint8(0)
 	if d.arith.c < d.arith.a {
 		if d.arith.a < 0x8000 {
 			bit = d.condMpsExchange(state)
 			err := d.renormalize()
 			if err != nil {
-				return false, err
+				return 0, err
 			}
 		} else {
 			bit = state.mps
@@ -388,25 +397,25 @@ func (d *decoder) decodeArithmeticBit(a *arithmetic, state *arithmeticState) (bo
 		bit = d.condLpsExchange(state)
 		err := d.renormalize()
 		if err != nil {
-			return false, err
+			return 0, err
 		}
 	}
 
 	return bit, nil
 }
 
-func (d *decoder) decodeArithmeticFixedBit(a *arithmetic) (bool, error) {
+func (d *decoder) decodeArithmeticFixedBit(a *arithmetic) (uint8, error) {
 	var fixedState arithmeticState
 	return d.decodeArithmeticBit(a, &fixedState)
 }
 
-func (d *decoder) condMpsExchange(state *arithmeticState) bool {
+func (d *decoder) condMpsExchange(state *arithmeticState) uint8 {
 	s := &arithmeticStateMachine[state.index]
-	var bit bool = false
+	var bit = uint8(0)
 	if d.arith.a < s.qe {
-		bit = !state.mps
+		bit = state.mps ^ 1
 		if s.switchMps {
-			state.mps = !state.mps
+			state.mps ^= 1
 		}
 		state.index = s.nextLps
 	} else {
@@ -416,17 +425,17 @@ func (d *decoder) condMpsExchange(state *arithmeticState) bool {
 	return bit
 }
 
-func (d *decoder) condLpsExchange(state *arithmeticState) bool {
+func (d *decoder) condLpsExchange(state *arithmeticState) uint8 {
 	s := &arithmeticStateMachine[state.index]
 	d.arith.c -= d.arith.a
-	var bit bool = false
+	var bit = uint8(0)
 	if d.arith.a < s.qe {
 		bit = state.mps
 		state.index = s.nextMps
 	} else {
-		bit = !state.mps
+		bit = state.mps ^ 1
 		if s.switchMps {
-			state.mps = !state.mps
+			state.mps ^= 1
 		}
 		state.index = s.nextLps
 	}
