@@ -178,21 +178,20 @@ func (d *decoder) processDAC(n int) error {
 }
 
 func (d *decoder) initDecodeArithmetic() error {
-	d.a = 0
-	d.c = 0
-	d.d = 0
-	d.ct = 0
-	err := d.byteIn()
+	d.arith.a = 0
+	d.arith.buffer = 0
+	d.arith.bufferLength = 0
+
+	// read first 16 bits from the stream.
+	b0, err := d.readArithmeticByte()
 	if err != nil {
 		return err
 	}
-	d.c = uint16(d.d) << 8
-	err = d.byteIn()
+	b1, err := d.readArithmeticByte()
 	if err != nil {
 		return err
 	}
-	d.c |= uint16(d.d)
-	d.d = 0
+	d.arith.c = uint16(b0)<<8 | uint16(b1)
 
 	return nil
 }
@@ -373,10 +372,10 @@ func (d *decoder) decodeArithmeticAC(conditioning uint8, a *arithmetic, k int32)
 
 func (d *decoder) decodeArithmeticBit(a *arithmetic, state *arithmeticState) (bool, error) {
 	s := &arithmeticStateMachine[state.index]
-	d.a -= s.qe
+	d.arith.a -= s.qe
 	var bit bool = false
-	if d.c < d.a {
-		if d.a < 0x8000 {
+	if d.arith.c < d.arith.a {
+		if d.arith.a < 0x8000 {
 			bit = d.condMpsExchange(state)
 			err := d.renormalize()
 			if err != nil {
@@ -404,7 +403,7 @@ func (d *decoder) decodeArithmeticFixedBit(a *arithmetic) (bool, error) {
 func (d *decoder) condMpsExchange(state *arithmeticState) bool {
 	s := &arithmeticStateMachine[state.index]
 	var bit bool = false
-	if d.a < s.qe {
+	if d.arith.a < s.qe {
 		bit = !state.mps
 		if s.switchMps {
 			state.mps = !state.mps
@@ -419,9 +418,9 @@ func (d *decoder) condMpsExchange(state *arithmeticState) bool {
 
 func (d *decoder) condLpsExchange(state *arithmeticState) bool {
 	s := &arithmeticStateMachine[state.index]
-	d.c -= d.a
+	d.arith.c -= d.arith.a
 	var bit bool = false
-	if d.a < s.qe {
+	if d.arith.a < s.qe {
 		bit = state.mps
 		state.index = s.nextMps
 	} else {
@@ -431,43 +430,44 @@ func (d *decoder) condLpsExchange(state *arithmeticState) bool {
 		}
 		state.index = s.nextLps
 	}
-	d.a = s.qe
+	d.arith.a = s.qe
 	return bit
 }
 
 func (d *decoder) renormalize() error {
 	for {
-		if d.ct == 16 {
-			err := d.byteIn()
+		// if buffer empty, read more
+		if d.arith.bufferLength == 0 {
+			b, err := d.readArithmeticByte()
 			if err != nil {
 				return err
 			}
+			d.arith.buffer = b
+			d.arith.bufferLength = 8
 		}
-		d.a <<= 1
-		d.c = (d.c << 1) | (uint16(d.d) >> 7)
-		d.d <<= 1
-		if d.ct == 0 {
-			return nil
-		}
-		d.ct -= 1
-		if d.a >= 0x8000 {
+
+		// move one bit from buffer into c
+		d.arith.c = (d.arith.c << 1) | (uint16(d.arith.buffer) >> 7)
+		d.arith.buffer <<= 1
+		d.arith.bufferLength -= 1
+
+		d.arith.a <<= 1
+		if d.arith.a >= 0x8000 {
 			return nil
 		}
 	}
 }
 
-func (d *decoder) byteIn() error {
+// Read one byte from the stream.
+func (d *decoder) readArithmeticByte() (uint8, error) {
 	c, err := d.readByteStuffedByte()
 	if err != nil {
+		// if no more data treat as trailing zeros
 		if err == errMissingFF00 {
-			d.d = 0
-			d.ct += 8
-			return nil
+			return 0, nil
 		}
-		return err
+		return 0, err
 	}
 
-	d.d = c
-	d.ct += 8
-	return nil
+	return c, nil
 }

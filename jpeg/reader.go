@@ -113,21 +113,25 @@ type bits struct {
 	n int32  // the number of unread bits in a.
 }
 
-type decoder struct {
-	r    io.Reader
-	bits bits
-
-	// FIXME
+// Arithmetic state.
+type arith struct {
+	// A register in section D.2.3.
 	a uint16
 
-	// FIXME
+	// Cx register in section D.2.3.
 	c uint16
 
-	// last read byte.
-	d uint8
+	// Source of new bits.
+	buffer uint8
 
-	// number of bits FIXME.
-	ct uint8
+	// Number of bits remaining in buffer
+	bufferLength uint8
+}
+
+type decoder struct {
+	r     io.Reader
+	bits  bits
+	arith arith
 
 	// bytes is a byte buffer, similar to a bufio.Reader, except that it
 	// has to be able to unread more than 1 byte, due to byte stuffing.
