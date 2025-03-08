@@ -222,7 +222,7 @@ func (d *decoder) processSOS(n int) error {
 		// b is the decoded coefficients, in natural (not zig-zag) order.
 		b           block
 		dc          [maxComponents]int32
-		prevDcDelta int32
+		prevDcDelta [maxComponents]int32
 		// bx and by are the location of the current block, in units of 8x8
 		// blocks: the third block in the first row has (bx, by) = (2, 0).
 		bx, by     int
@@ -296,13 +296,12 @@ func (d *decoder) processSOS(n int) error {
 						zig := zigStart
 						if zig == 0 {
 							zig++
-							dcDelta, err := d.decodeDC(&arith, scan[i].td, prevDcDelta)
-							println(dcDelta)
+							dcDelta, err := d.decodeDC(&arith, scan[i].td, prevDcDelta[compIndex])
 							if err != nil {
 								return err
 							}
 							dc[compIndex] += dcDelta
-							prevDcDelta = dcDelta
+							prevDcDelta[compIndex] = dcDelta
 							b[0] = dc[compIndex] << al
 						}
 
