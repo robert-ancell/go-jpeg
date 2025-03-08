@@ -4,6 +4,15 @@
 
 package jpeg
 
+type arithmeticDcConditioning struct {
+	lower int32
+	upper int32
+}
+
+type arithmeticAcConditioning struct {
+	kx uint8
+}
+
 // arithmetic is a Arithmetic decoder, specified in section D.
 type arithmetic struct {
 	// States for DC coefficients.
@@ -173,7 +182,19 @@ func (d *decoder) processDAC(n int) error {
 		if tc == 1 && (cs < 1 || cs > 63) {
 			return FormatError("bad Cs value")
 		}
-		d.arithCond[tc][tb] = cs
+
+		if tc == 0 {
+			var upper = int32(1 << (cs >> 4))
+			var lower = int32(cs & 0xf)
+			if lower > 0 {
+				lower = 1 << (lower - 1)
+			}
+			d.arithDcCond[tb].lower = lower
+			d.arithDcCond[tb].upper = upper
+		} else {
+			d.arithAcCond[tb].kx = cs
+		}
+
 		n -= 2
 	}
 	return nil
@@ -200,20 +221,20 @@ func (d *decoder) initDecodeArithmetic() error {
 
 // decodeArithmeticDC returns the next Arithmetic-coded DC delta value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticDC(a *arithmetic, lower int32, upper int32, prevDcDelta int32) (int32, error) {
+func (d *decoder) decodeArithmeticDC(a *arithmetic, conditioning *arithmeticDcConditioning, prevDcDelta int32) (int32, error) {
 	var c = 0
 	if prevDcDelta >= 0 {
-		if prevDcDelta <= lower {
+		if prevDcDelta <= conditioning.lower {
 			c = 0
-		} else if prevDcDelta <= upper {
+		} else if prevDcDelta <= conditioning.upper {
 			c = 1
 		} else {
 			c = 2
 		}
 	} else {
-		if prevDcDelta >= -lower {
+		if prevDcDelta >= -conditioning.lower {
 			c = 0
-		} else if prevDcDelta >= -upper {
+		} else if prevDcDelta >= -conditioning.upper {
 			c = 3
 		} else {
 			c = 4
@@ -282,7 +303,7 @@ func (d *decoder) decodeArithmeticDC(a *arithmetic, lower int32, upper int32, pr
 
 // decodeArithmeticAC returns the next Arithmetic-coded AC value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint8, kx uint8) (uint8, int32, bool, error) {
+func (d *decoder) decodeArithmeticAC(a *arithmetic, conditioning *arithmeticAcConditioning, k uint8) (uint8, int32, bool, error) {
 	bit, err := d.decodeArithmeticBit(a, &a.acEndOfBlock[k-1])
 	if err != nil {
 		return 0, 0, false, err
@@ -325,7 +346,7 @@ func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint8, kx uint8) (uint8, i
 
 	var widthStates *[14]arithmeticState
 	var magnitudeStates *[14]arithmeticState
-	if k <= kx {
+	if k <= conditioning.kx {
 		widthStates = &a.acLowWidth
 		magnitudeStates = &a.acLowMagnitude
 	} else {

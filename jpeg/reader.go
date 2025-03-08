@@ -169,12 +169,13 @@ type decoder struct {
 	adobeTransform      uint8
 	eobRun              uint16 // End-of-Band run, specified in section G.1.2.2.
 
-	comp       [maxComponents]component
-	progCoeffs [maxComponents][]block // Saved state between progressive-mode scans.
-	huff       [maxTc + 1][maxTh + 1]huffman
-	arithCond  [maxTc + 1][maxTb + 1]uint8
-	quant      [maxTq + 1]block // Quantization tables, in zig-zag order.
-	tmp        [2 * blockSize]byte
+	comp        [maxComponents]component
+	progCoeffs  [maxComponents][]block // Saved state between progressive-mode scans.
+	huff        [maxTc + 1][maxTh + 1]huffman
+	arithDcCond [maxTb + 1]arithmeticDcConditioning
+	arithAcCond [maxTb + 1]arithmeticAcConditioning
+	quant       [maxTq + 1]block // Quantization tables, in zig-zag order.
+	tmp         [2 * blockSize]byte
 }
 
 // fill fills up the d.bytes.buf buffer from the underlying io.Reader. It
@@ -562,8 +563,9 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 
 	// Initialize Arithmetic conditioning
 	for t := range maxTb {
-		d.arithCond[dcTable][t] = 1
-		d.arithCond[acTable][t] = 5
+		d.arithDcCond[t].lower = 0
+		d.arithDcCond[t].upper = 1 << 1
+		d.arithAcCond[t].kx = 5
 	}
 
 	// Process the remaining segments until the End Of Image marker.

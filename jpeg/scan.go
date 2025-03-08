@@ -50,13 +50,7 @@ func (d *decoder) makeImg(mxx, myy int) {
 // Decode the DC delta coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
 func (d *decoder) decodeDC(arith *[maxTc + 1][maxTb + 1]arithmetic, td uint8, prevDcDelta int32) (int32, error) {
 	if d.arithmetic {
-		var conditioning = d.arithCond[dcTable][td]
-		var upper = int32(1 << (conditioning >> 4))
-		var lower = int32(conditioning & 0xf)
-		if lower > 0 {
-			lower = 1 << (lower - 1)
-		}
-		return d.decodeArithmeticDC(&arith[dcTable][td], lower, upper, prevDcDelta)
+		return d.decodeArithmeticDC(&arith[dcTable][td], &d.arithDcCond[td], prevDcDelta)
 	} else {
 		value, err := d.decodeHuffman(&d.huff[dcTable][td])
 		if err != nil {
@@ -72,9 +66,7 @@ func (d *decoder) decodeDC(arith *[maxTc + 1][maxTb + 1]arithmetic, td uint8, pr
 // Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
 func (d *decoder) decodeAC(arith *[maxTc + 1][maxTb + 1]arithmetic, ta uint8, k uint8) (uint8, int32, uint16, error) {
 	if d.arithmetic {
-		var kx = d.arithCond[acTable][ta]
-
-		r, ac, eob, err := d.decodeArithmeticAC(&arith[acTable][ta], k, kx)
+		r, ac, eob, err := d.decodeArithmeticAC(&arith[acTable][ta], &d.arithAcCond[ta], k)
 		if err != nil {
 			return 0, 0, 0, err
 		}
