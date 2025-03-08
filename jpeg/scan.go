@@ -70,11 +70,11 @@ func (d *decoder) decodeDC(arith *[maxTc + 1][maxTb + 1]arithmetic, td uint8, pr
 }
 
 // Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
-func (d *decoder) decodeAC(arith *[maxTc + 1][maxTb + 1]arithmetic, ta uint8, k int32) (uint16, int32, uint16, error) {
+func (d *decoder) decodeAC(arith *[maxTc + 1][maxTb + 1]arithmetic, ta uint8, k uint8) (uint8, int32, uint16, error) {
 	if d.arithmetic {
-		var kx = uint(d.arithCond[acTable][ta])
+		var kx = d.arithCond[acTable][ta]
 
-		r, ac, eob, err := d.decodeArithmeticAC(&arith[acTable][ta], uint(k), kx)
+		r, ac, eob, err := d.decodeArithmeticAC(&arith[acTable][ta], k, kx)
 		if err != nil {
 			return 0, 0, 0, err
 		}
@@ -90,7 +90,7 @@ func (d *decoder) decodeAC(arith *[maxTc + 1][maxTb + 1]arithmetic, ta uint8, k 
 		val0 := value >> 4
 		val1 := value & 0x0f
 		if val1 != 0 {
-			r := uint16(val0)
+			r := val0
 			ac, err := d.receiveExtend(val1)
 			if err != nil {
 				return 0, 0, 0, err
@@ -191,10 +191,10 @@ func (d *decoder) processSOS(n int) error {
 	//
 	// For sequential JPEGs, these parameters are hard-coded to 0/63/0/0, as
 	// per table B.3.
-	zigStart, zigEnd, ah, al := int32(0), int32(blockSize-1), uint32(0), uint32(0)
+	zigStart, zigEnd, ah, al := uint8(0), uint8(blockSize-1), uint32(0), uint32(0)
 	if d.progressive {
-		zigStart = int32(d.tmp[1+2*nComp])
-		zigEnd = int32(d.tmp[2+2*nComp])
+		zigStart = d.tmp[1+2*nComp]
+		zigEnd = d.tmp[2+2*nComp]
 		ah = uint32(d.tmp[3+2*nComp] >> 4)
 		al = uint32(d.tmp[3+2*nComp] & 0x0f)
 		if (zigStart == 0 && zigEnd != 0) || zigStart > zigEnd || blockSize <= zigEnd {
@@ -326,7 +326,7 @@ func (d *decoder) processSOS(n int) error {
 									d.eobRun = eobRun - 1
 									break
 								}
-								zig += int32(r)
+								zig += uint8(r)
 								b[unzig[zig]] = ac << al
 							}
 						}
@@ -380,7 +380,7 @@ func (d *decoder) processSOS(n int) error {
 
 // refine decodes a successive approximation refinement block, as specified in
 // section G.1.2.
-func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) error {
+func (d *decoder) refine(b *block, h *huffman, zigStart uint8, zigEnd uint8, delta int32) error {
 	// Refining a DC component is trivial.
 	if zigStart == 0 {
 		if zigEnd != 0 {
@@ -458,7 +458,7 @@ func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) er
 
 // refineNonZeroes refines non-zero entries of b in zig-zag order. If nz >= 0,
 // the first nz zero entries are skipped over.
-func (d *decoder) refineNonZeroes(b *block, zig, zigEnd, nz, delta int32) (int32, error) {
+func (d *decoder) refineNonZeroes(b *block, zig uint8, zigEnd uint8, nz, delta int32) (uint8, error) {
 	for ; zig <= zigEnd; zig++ {
 		u := unzig[zig]
 		if b[u] == 0 {

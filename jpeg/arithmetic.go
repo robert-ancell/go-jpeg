@@ -282,7 +282,7 @@ func (d *decoder) decodeArithmeticDC(a *arithmetic, lower int32, upper int32, pr
 
 // decodeArithmeticAC returns the next Arithmetic-coded AC value from the bit-stream,
 // decoded according to a.
-func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint, kx uint) (uint16, int32, bool, error) {
+func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint8, kx uint8) (uint8, int32, bool, error) {
 	bit, err := d.decodeArithmeticBit(a, &a.acEndOfBlock[k-1])
 	if err != nil {
 		return 0, 0, false, err
@@ -291,7 +291,7 @@ func (d *decoder) decodeArithmeticAC(a *arithmetic, k uint, kx uint) (uint16, in
 		return 0, 0, true, nil
 	}
 
-	var r = uint16(0)
+	var r = uint8(0)
 	for {
 		bit, err = d.decodeArithmeticBit(a, &a.acNonZero[k-1])
 		if err != nil {
