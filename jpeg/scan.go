@@ -48,9 +48,9 @@ func (d *decoder) makeImg(mxx, myy int) {
 }
 
 // Decode the DC delta coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
-func (d *decoder) decodeDC(td uint8, prevDcDelta int32) (int32, error) {
+func (d *decoder) decodeDC(arith *[maxTc + 1][maxTb + 1]arithmetic, td uint8, prevDcDelta int32) (int32, error) {
 	if d.arithmetic {
-		return d.decodeArithmeticDC(&d.arith[dcTable][td], prevDcDelta)
+		return d.decodeArithmeticDC(d.arithCond[dcTable][td], &arith[dcTable][td], prevDcDelta)
 	} else {
 		value, err := d.decodeHuffman(&d.huff[dcTable][td])
 		if err != nil {
@@ -64,20 +64,20 @@ func (d *decoder) decodeDC(td uint8, prevDcDelta int32) (int32, error) {
 }
 
 // Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
-func (d *decoder) decodeAC(ta uint8, k int32) (uint16, int32, bool, error) {
+func (d *decoder) decodeAC(arith *[maxTc + 1][maxTb + 1]arithmetic, ta uint8, k int32) (uint16, int32, uint16, error) {
 	if d.arithmetic {
-		r, ac, eob, err := d.decodeArithmeticAC(&d.arith[acTable][ta], k)
+		r, ac, eob, err := d.decodeArithmeticAC(d.arithCond[acTable][ta], &arith[acTable][ta], k)
 		if err != nil {
-			return 0, 0, false, err
+			return 0, 0, 0, err
 		}
 		if eob {
-			return r, 0, true, nil
+			return 0, 0, 1, nil
 		}
-		return r, ac, false, nil
+		return r, ac, 0, nil
 	} else {
 		value, err := d.decodeHuffman(&d.huff[acTable][ta])
 		if err != nil {
-			return 0, 0, false, err
+			return 0, 0, 0, err
 		}
 		val0 := value >> 4
 		val1 := value & 0x0f
@@ -85,22 +85,22 @@ func (d *decoder) decodeAC(ta uint8, k int32) (uint16, int32, bool, error) {
 			r := uint16(val0)
 			ac, err := d.receiveExtend(val1)
 			if err != nil {
-				return 0, 0, false, err
+				return 0, 0, 0, err
 			}
-			return r, ac, false, nil
+			return r, ac, 0, nil
 		} else {
 			if val0 != 0x0f {
 				eobRun := uint16(1 << val0)
 				if val0 != 0 {
 					bits, err := d.decodeBits(int32(val0))
 					if err != nil {
-						return 0, 0, false, err
+						return 0, 0, 0, err
 					}
 					eobRun |= uint16(bits)
 				}
-				return eobRun, 0, true, nil
+				return 0, 0, eobRun, nil
 			}
-			return 0x0f, 0, false, nil
+			return 0x0f, 0, 0, nil
 		}
 	}
 }
@@ -222,11 +222,13 @@ func (d *decoder) processSOS(n int) error {
 		// b is the decoded coefficients, in natural (not zig-zag) order.
 		b           block
 		dc          [maxComponents]int32
-		prevDcDelta [maxComponents]int32
+		prevDcDelta int32
 		// bx and by are the location of the current block, in units of 8x8
 		// blocks: the third block in the first row has (bx, by) = (2, 0).
 		bx, by     int
 		blockCount int
+		// Arithmetic state
+		arith [maxTc + 1][maxTb + 1]arithmetic
 	)
 	if d.arithmetic {
 		err := d.initDecodeArithmetic()
@@ -294,12 +296,13 @@ func (d *decoder) processSOS(n int) error {
 						zig := zigStart
 						if zig == 0 {
 							zig++
-							dcDelta, err := d.decodeDC(scan[i].td, prevDcDelta[compIndex])
+							dcDelta, err := d.decodeDC(&arith, scan[i].td, prevDcDelta)
+							println(dcDelta)
 							if err != nil {
 								return err
 							}
 							dc[compIndex] += dcDelta
-							prevDcDelta[compIndex] = dcDelta
+							prevDcDelta = dcDelta
 							b[0] = dc[compIndex] << al
 						}
 
@@ -308,12 +311,12 @@ func (d *decoder) processSOS(n int) error {
 						} else {
 							// Decode the AC coefficients, as specified in section F.2.2.2.
 							for ; zig <= zigEnd; zig++ {
-								r, ac, isEob, err := d.decodeAC(scan[i].ta, zig)
+								r, ac, eobRun, err := d.decodeAC(&arith, scan[i].ta, zig)
 								if err != nil {
 									return err
 								}
-								if isEob {
-									d.eobRun = r - 1
+								if eobRun > 0 {
+									d.eobRun = eobRun - 1
 									break
 								}
 								zig += int32(r)

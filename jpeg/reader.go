@@ -168,7 +168,7 @@ type decoder struct {
 	comp       [maxComponents]component
 	progCoeffs [maxComponents][]block // Saved state between progressive-mode scans.
 	huff       [maxTc + 1][maxTh + 1]huffman
-	arith      [maxTc + 1][maxTb + 1]arithmetic
+	arithCond  [maxTc + 1][maxTb + 1]uint8
 	quant      [maxTq + 1]block // Quantization tables, in zig-zag order.
 	tmp        [2 * blockSize]byte
 }
@@ -558,8 +558,8 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 
 	// Initialize Arithmetic conditioning
 	for t := range maxTb {
-		d.arith[0][t].conditioning = 1
-		d.arith[1][t].conditioning = 5
+		d.arithCond[dcTable][t] = 1
+		d.arithCond[acTable][t] = 5
 	}
 
 	// Process the remaining segments until the End Of Image marker.
