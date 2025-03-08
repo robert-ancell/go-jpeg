@@ -547,17 +547,31 @@ func TestBadRestartMarker(t *testing.T) {
 }
 
 func TestArithmetic(t *testing.T) {
-	b, err := os.ReadFile("../testdata/video-001.arithmetic.jpeg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	im, err := Decode(bytes.NewReader(b))
+	// Reference image.
+	i0, err := decodeFile("../testdata/video-001.jpeg")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if im.Bounds() != image.Rect(0, 0, 150, 103) {
-		t.Errorf("bad bounds: %v", im.Bounds())
+	i1, err := decodeFile("../testdata/video-001.arithmetic.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check images are the same.
+	m0 := i0.(*image.YCbCr)
+	m1 := i1.(*image.YCbCr)
+	if m0.Bounds() != m1.Bounds() {
+		t.Errorf("bounds differ: %v and %v", m0.Bounds(), m1.Bounds())
+	}
+	if err := check(m0.Bounds(), m0.Y, m1.Y, m0.YStride, m1.YStride); err != nil {
+		t.Errorf("arithmetic (Y): %v", err)
+	}
+	if err := check(m0.Bounds(), m0.Cb, m1.Cb, m0.CStride, m1.CStride); err != nil {
+		t.Errorf("arithmetic (Cb): %v", err)
+	}
+	if err := check(m0.Bounds(), m0.Cr, m1.Cr, m0.CStride, m1.CStride); err != nil {
+		t.Errorf("arithmetic (Cr): %v", err)
 	}
 }
 
