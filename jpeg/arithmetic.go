@@ -278,10 +278,7 @@ func (d *decoder) decodeArithmeticDC(conditioning uint8, a *arithmetic, prevDcDe
 		if err != nil {
 			return 0, err
 		}
-		magnitude <<= 1
-		if bit == 1 {
-			magnitude |= 1
-		}
+		magnitude = magnitude<<1 | int32(bit)
 	}
 	magnitude += 1
 
