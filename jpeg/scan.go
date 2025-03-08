@@ -47,10 +47,10 @@ func (d *decoder) makeImg(mxx, myy int) {
 	}
 }
 
-// Decode the DC coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
-func (d *decoder) decodeDC(td uint8) (int32, error) {
+// Decode the DC delta coefficient, as specified in section F.2.2.1 (Huffman) or F.2.4.1 (Arithmetic).
+func (d *decoder) decodeDC(td uint8, prevDcDelta int32) (int32, error) {
 	if d.arithmetic {
-		return d.decodeArithmeticDC(&d.arith[dcTable][td])
+		return d.decodeArithmeticDC(&d.arith[dcTable][td], prevDcDelta)
 	} else {
 		value, err := d.decodeHuffman(&d.huff[dcTable][td])
 		if err != nil {
@@ -66,14 +66,14 @@ func (d *decoder) decodeDC(td uint8) (int32, error) {
 // Decode the run length and AC coefficient, as specified in section F.2.2.2 (Huffman) or F.2.4.2 (Arithmetic).
 func (d *decoder) decodeAC(ta uint8, k int32) (uint16, int32, bool, error) {
 	if d.arithmetic {
-		ac, eob, err := d.decodeArithmeticAC(&d.arith[acTable][ta], k)
+		r, ac, eob, err := d.decodeArithmeticAC(&d.arith[acTable][ta], k)
 		if err != nil {
 			return 0, 0, false, err
 		}
 		if eob {
-			return 1, 0, true, nil
+			return r, 0, true, nil
 		}
-		return 0, ac, false, nil
+		return r, ac, false, nil
 	} else {
 		value, err := d.decodeHuffman(&d.huff[acTable][ta])
 		if err != nil {
@@ -220,13 +220,20 @@ func (d *decoder) processSOS(n int) error {
 	mcu, expectedRST := 0, uint8(rst0Marker)
 	var (
 		// b is the decoded coefficients, in natural (not zig-zag) order.
-		b  block
-		dc [maxComponents]int32
+		b           block
+		dc          [maxComponents]int32
+		prevDcDelta [maxComponents]int32
 		// bx and by are the location of the current block, in units of 8x8
 		// blocks: the third block in the first row has (bx, by) = (2, 0).
 		bx, by     int
 		blockCount int
 	)
+	if d.arithmetic {
+		err := d.initDecodeArithmetic()
+		if err != nil {
+			return err
+		}
+	}
 	for my := 0; my < myy; my++ {
 		for mx := 0; mx < mxx; mx++ {
 			for i := 0; i < nComp; i++ {
@@ -287,11 +294,12 @@ func (d *decoder) processSOS(n int) error {
 						zig := zigStart
 						if zig == 0 {
 							zig++
-							dcDelta, err := d.decodeDC(scan[i].td)
+							dcDelta, err := d.decodeDC(scan[i].td, prevDcDelta[compIndex])
 							if err != nil {
 								return err
 							}
 							dc[compIndex] += dcDelta
+							prevDcDelta[compIndex] = dcDelta
 							b[0] = dc[compIndex] << al
 						}
 

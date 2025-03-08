@@ -116,6 +116,19 @@ type bits struct {
 type decoder struct {
 	r    io.Reader
 	bits bits
+
+	// FIXME
+	a uint16
+
+	// FIXME
+	c uint16
+
+	// last read byte.
+	d uint8
+
+	// number of bits FIXME.
+	ct uint8
+
 	// bytes is a byte buffer, similar to a bufio.Reader, except that it
 	// has to be able to unread more than 1 byte, due to byte stuffing.
 	// Byte stuffing is specified in section F.1.2.3.
@@ -229,6 +242,7 @@ func (d *decoder) readByteStuffedByte() (x byte, err error) {
 			return x, err
 		}
 		if d.bytes.buf[d.bytes.i] != 0x00 {
+			d.bytes.i--
 			return 0, errMissingFF00
 		}
 		d.bytes.i++
@@ -253,6 +267,7 @@ func (d *decoder) readByteStuffedByte() (x byte, err error) {
 	}
 	d.bytes.nUnreadable = 2
 	if x != 0x00 {
+		d.unreadByteStuffedByte()
 		return 0, errMissingFF00
 	}
 	return 0xff, nil
@@ -539,6 +554,12 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, error) {
 	}
 	if d.tmp[0] != 0xff || d.tmp[1] != soiMarker {
 		return nil, FormatError("missing SOI marker")
+	}
+
+	// Initialize Arithmetic conditioning
+	for t := range maxTb {
+		d.arith[0][t].conditioning = 1
+		d.arith[1][t].conditioning = 5
 	}
 
 	// Process the remaining segments until the End Of Image marker.
